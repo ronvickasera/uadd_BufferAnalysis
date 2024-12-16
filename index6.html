@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Buffer Analysis</title>
+    <style>
+        html,
+        body,
+        #viewDiv {
+            padding: 0;
+            margin: 0;
+            height: 100%;
+            width: 100%;
+        }
+
+        #tableContainer {
+            width: 100%;
+            overflow-x: auto;
+            margin: 0 auto;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #resultsTable {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+            max-width: 90%;
+        }
+
+        #resultsTable th,
+        #resultsTable td {
+            border: 1px solid black;
+            padding: 2px;
+            text-align: left;
+            word-wrap: break-word;
+            font-size: 0.9em;
+        }
+
+        #resultsTable th {
+            background-color: #f2f2f2;
+        }
+
+        #resultsTable tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        #resultsTable tr:hover {
+            background-color: #ddd;
+        }
+
+        /* filterform */
+
+        div {
+            margin-bottom: 10px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/light/main.css" />
+    <script src="https://js.arcgis.com/4.31/"></script>
+
+    <!-- Load SheetJS library (add this line in the head section of your HTML) -->
+    <!-- Load SheetJS -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script> -->
+</head>
+
+<body>
+    <button id="exportButton">Download CSV</button>
+
+
+    <div id="viewDiv"></div>
+    <script>
+        require([
+            "esri/Map",
+            "esri/views/MapView",
+            "esri/layers/FeatureLayer",
+            "esri/widgets/Search",
+            "esri/geometry/geometryEngine",
+            "esri/Graphic",
+            "esri/widgets/Print",
+            "esri/widgets/Expand"
+        ], function (Map, MapView, FeatureLayer, Search, geometryEngine, Graphic, Print, Expand) {
+            const map = new Map({
+                basemap: "topo-vector"
+            });
+
+            const view = new MapView({
+                container: "viewDiv",
+                map: map,
+                center: [75.8577, 22.7196],
+                zoom: 10
+            });
+
+
+            //print map
+
+            view.when(() => {
+                const print = new Print({
+                    view: view,
+
+                    printServiceUrl:
+                        "https://utility.arcgisonline.com/arcgis/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task"
+                });
+
+
+                // Wrap the Print widget inside an Expand widget
+                const printExpand = new Expand({
+                    view: view,
+                    content: print,
+                    expandIconClass: "esri-icon-printer", // Optional: Customize the icon
+                    expandTooltip: "Download Map" // Optional: Tooltip text
+                });
+
+                // Add the Expand widget to the top-right corner
+                view.ui.add(printExpand, "top-right");
+
+
+            });
+
+
+            const baseURL = "https://services7.arcgis.com/MbPKIXKy5xW7oH6s/ArcGIS/rest/services/Rau_ULB_02122024_WFL1/FeatureServer";
+
+
+
+
+            const RauRoadCenterLineLayer = new FeatureLayer({
+                url: `${baseURL}/11`,
+                //  url: "https://services7.arcgis.com/MbPKIXKy5xW7oH6s/ArcGIS/rest/services/Rau_ULB_02122024_WFL1/FeatureServer/11",
+                title: "Rau Road CenterLine Layer",
+                outFields: ["*"]
+            });
+            map.layers.add(RauRoadCenterLineLayer);
+
+            const RauPlotBuildingStructure = new FeatureLayer({
+                url: `${baseURL}/9`,
+                // url: "https://services7.arcgis.com/MbPKIXKy5xW7oH6s/ArcGIS/rest/services/Rau_ULB_02122024_WFL1/FeatureServer/9",
+                title: "PlotBuildingStructure",
+                // outFields: ["*"] //OBJECTID , StateCode ,DivisionCode ,DistrictCode ,WardNo  ,ULBCode ,Area ,Shape__Area , Shape__Length
+                outFields: ["OBJECTID", "StateCode", "DivisionCode", "DistrictCode", "WardNo", "ULBCode", "Area", "Shape__Area", "Shape__Length"],
+                popupTemplate: {
+                    title: "Feature Information",
+                    content: [
+                        {
+                            type: "fields",
+                            fieldInfos: [
+                                { fieldName: "OBJECTID", label: "Object ID" },
+                                { fieldName: "StateCode", label: "State Code" },
+                                { fieldName: "DivisionCode", label: "Division Code" },
+                                { fieldName: "DistrictCode", label: "District Code" },
+                                { fieldName: "WardNo", label: "Ward Number" },
+                                { fieldName: "ULBCode", label: "ULB Code" },
+                                { fieldName: "Area", label: "Area" },
+                                { fieldName: "Shape__Area", label: "Shape Area" },
+                                { fieldName: "Shape__Length", label: "Shape Length" }
+                            ]
+                        }
+                    ]
+                }
+            });
+            map.layers.add(RauPlotBuildingStructure);
+
+
+
+            const dropdown = document.createElement("select");
+            dropdown.id = "layerDropdown";
+            const layers = [
+
+                { layer: RauPlotBuildingStructure, title: "PlotBuildingStructure" },
+                { layer: RauRoadCenterLineLayer, title: "Rau Road CenterLine Layer" }
+
+
+            ];
+
+            layers.forEach(({ title }) => {
+                const option = document.createElement("option");
+                option.value = title;
+                option.textContent = title;
+                dropdown.appendChild(option);
+            });
+
+            document.body.appendChild(dropdown);
+
+            const filterForm = document.createElement("div");
+
+            filterForm.innerHTML = `
+                <div style="border: 2px solid black; padding: 10px; border-radius: 5px;">
+                    <div>
+                    <label for="propertyName">Property Name:</label>
+                    <select id="propertyName"></select>
+                    </div>
+                    <div>
+                    <label for="propertyValue">Value:</label>
+                    <select id="propertyValue"></select>
+                    </div>
+                    <div>
+                    <label for="bufferDistance">Buffer Distance:</label>
+                    <input type="number" id="bufferDistance" placeholder="Enter distance">
+                    </div>
+                    <div>
+                    <label for="bufferUnits">Buffer Units:</label>
+                    <select id="bufferUnits">
+                        <option value="meters">Meters</option>
+                        <option value="kilometers">Kilometers</option>
+                        <option value="miles">Miles</option>
+                    </select>
+                    </div>
+                    <div>
+                    <button id="filterButton">Filter & Buffer</button>
+                    </div>
+                </div>
+                `;
+
+
+            document.body.appendChild(filterForm);
+
+            dropdown.addEventListener("change", () => {
+                const selectedLayerTitle = dropdown.value;
+                const selectedLayer = layers.find(({ title }) => title === selectedLayerTitle).layer;
+
+                selectedLayer.load().then(() => {
+                    const fields = selectedLayer.fields;
+                    const propertyNameDropdown = document.getElementById("propertyName");
+                    propertyNameDropdown.innerHTML = "";
+
+                    fields.forEach(field => {
+                        const option = document.createElement("option");
+                        option.value = field.name;
+                        option.textContent = field.alias || field.name;
+                        propertyNameDropdown.appendChild(option);
+                    });
+                });
+            });
+
+            document.getElementById("propertyName").addEventListener("change", () => {
+                const selectedLayerTitle = dropdown.value;
+                const selectedLayer = layers.find(({ title }) => title === selectedLayerTitle).layer;
+                const propertyName = document.getElementById("propertyName").value;
+
+                const query = selectedLayer.createQuery();
+                query.returnDistinctValues = true;
+                query.outFields = [propertyName];
+
+                selectedLayer.queryFeatures(query).then((result) => {
+                    const propertyValueDropdown = document.getElementById("propertyValue");
+                    propertyValueDropdown.innerHTML = "";
+
+                    result.features.forEach((feature) => {
+                        const value = feature.attributes[propertyName];
+                        if (value !== null) {
+                            const option = document.createElement("option");
+                            option.value = value;
+                            option.textContent = value;
+                            propertyValueDropdown.appendChild(option);
+                        }
+                    });
+                });
+            });
+
+            //Filter Button
+
+            document.getElementById("filterButton").addEventListener("click", () => {
+                const selectedLayerTitle = dropdown.value;
+                const propertyName = document.getElementById("propertyName").value;
+                const propertyValue = document.getElementById("propertyValue").value;
+                const bufferDistance = parseFloat(document.getElementById("bufferDistance").value);
+                const bufferUnits = document.getElementById("bufferUnits").value;
+
+                if (isNaN(bufferDistance) || bufferDistance <= 0) {
+                    alert("Please enter a valid buffer distance.");
+                    return;
+                }
+
+                const selectedLayer = layers.find(({ title }) => title === selectedLayerTitle).layer;
+
+                const query = selectedLayer.createQuery();
+                query.where = `${propertyName} = '${propertyValue}'`;
+                query.returnGeometry = true;
+
+                selectedLayer.queryFeatures(query).then((result) => {
+                    if (result.features.length === 0) {
+                        alert("No features found");
+                        return;
+                    }
+
+                    const geometries = result.features.map((feature) => feature.geometry);
+                    const bufferGeometries = geometries.map((geometry) =>
+                        geometryEngine.buffer(geometry, bufferDistance, bufferUnits)
+                    );
+
+                    bufferGeometries.forEach((bufferGeometry) => {
+                        const bufferGraphic = new Graphic({
+                            geometry: bufferGeometry,
+                            symbol: {
+                                type: "simple-fill",
+                                color: [0, 255, 255, 0],
+                                outline: {
+                                    color: [0, 255, 255],
+                                    width: 2
+                                }
+                            }
+                        });
+                        view.graphics.add(bufferGraphic);
+
+                        layers.forEach(({ layer, title }) => {
+                            const intersectQuery = layer.createQuery();
+                            intersectQuery.geometry = bufferGeometry;
+                            intersectQuery.spatialRelationship = "intersects"; //Within
+                            intersectQuery.returnGeometry = true;
+
+                            layer.queryFeatures(intersectQuery).then((response) => {
+                                // console.log(response.features);
+
+                                populateTable(response.features, title);
+                                response.features.forEach((feature) => {
+                                    // console.log(feature);
+                                    const highlightGraphic = new Graphic({
+                                        geometry: feature.geometry,
+                                        symbol: {
+                                            type: "simple-fill",
+                                            color: [255, 218, 107, 1],
+                                            outline: {
+                                                color: [255, 2018, 107],
+                                                width: 2
+                                            }
+                                        }
+                                    });
+                                    view.graphics.add(highlightGraphic);
+                                });
+                            });
+                        });
+                    });
+
+                    view.goTo(bufferGeometries);
+                });
+            });
+
+            //Table
+
+            function populateTable(features, layerTitle) {
+                const tableContainer = document.getElementById("tableContainer") || document.createElement("div");
+                tableContainer.id = "tableContainer";
+                document.body.appendChild(tableContainer);
+
+                tableContainer.innerHTML = `<h3>Selected Features from ${layerTitle}</h3>`;
+
+                const table = document.createElement("table");
+                table.id = "resultsTable";
+                const thead = document.createElement("thead");
+                const tbody = document.createElement("tbody");
+
+                // Define the attributes to display
+                const displayFields = [
+                    "OBJECTID",
+                    "StateCode",
+                    "DivisionCode",
+                    "DistrictCode",
+                    "WardNo",
+                    "ULBCode",
+                    "Area",
+                    "Shape__Area",
+                    "Shape__Length"
+                ];
+
+                if (features.length > 0) {
+
+
+                    // Create table headers
+                    const headerRow = document.createElement("tr");
+                    displayFields.forEach((field) => {
+                        const th = document.createElement("th");
+                        th.textContent = field;
+                        headerRow.appendChild(th);
+                    });
+                    thead.appendChild(headerRow);
+
+
+
+                    // Populate table rows
+                    features.forEach((feature) => {
+                        const row = document.createElement("tr");
+                        displayFields.forEach((field) => {
+                            const td = document.createElement("td");
+                            td.textContent = feature.attributes[field] || "N/A"; // Use "N/A" if the attribute is null/undefined
+                            row.appendChild(td);
+                        });
+                        tbody.appendChild(row);
+                    });
+                } else {
+                    // No data row
+                    const noDataRow = document.createElement("tr");
+                    const noDataCell = document.createElement("td");
+                    noDataCell.textContent = "No features selected";
+                    noDataCell.colSpan = displayFields.length;
+                    noDataRow.appendChild(noDataCell);
+                    tbody.appendChild(noDataRow);
+                }
+
+                table.appendChild(thead);
+                table.appendChild(tbody);
+                tableContainer.innerHTML = ""; // Clear previous table content
+                tableContainer.appendChild(table);
+            }
+
+            //print
+
+
+            view.ui.add(dropdown, "top-right");
+            view.ui.add(filterForm, "top-right");
+        });
+    </script>
+
+    <!-- export to csv  -->
+
+    <script>
+        function exportTableToCSV(tableID, filename = 'data.csv') {
+            const table = document.getElementById(tableID);
+
+            if (!table) {
+                alert("No data table available for export.");
+                return;
+            }
+
+            let csv = [];
+            const rows = table.querySelectorAll('tr');
+
+            rows.forEach(row => {
+                const cols = row.querySelectorAll('td, th');
+                const rowData = [];
+                cols.forEach(col => rowData.push(col.innerText.replace(/,/g, ''))); // Avoid commas in data
+                csv.push(rowData.join(','));
+            });
+
+            const csvContent = csv.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        document.getElementById('exportButton').addEventListener('click', () => {
+            exportTableToCSV('resultsTable', 'exported_data.csv');
+        });
+    </script>
+
+
+</body>
+
+</html>
